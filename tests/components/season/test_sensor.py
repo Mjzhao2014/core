@@ -7,14 +7,12 @@ import pytest
 
 from homeassistant.components.season.const import (
     DOMAIN,
-    TYPE_ASTRONOMICAL,
-    TYPE_METEOROLOGICAL,
-)
-from homeassistant.components.season.sensor import (
     STATE_AUTUMN,
     STATE_SPRING,
     STATE_SUMMER,
     STATE_WINTER,
+    TYPE_ASTRONOMICAL,
+    TYPE_METEOROLOGICAL,
 )
 from homeassistant.components.sensor import ATTR_OPTIONS, SensorDeviceClass
 from homeassistant.const import ATTR_DEVICE_CLASS, CONF_TYPE, STATE_UNKNOWN
