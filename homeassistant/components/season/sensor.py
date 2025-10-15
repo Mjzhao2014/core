@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from functools import lru_cache
 import logging
+from typing import TYPE_CHECKING
 
 from skyfield import almanac
 from skyfield.api import load
+
+if TYPE_CHECKING:
+    from skyfield.jpllib import SpiceKernel
+    from skyfield.timelib import Timescale
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -38,13 +43,13 @@ LOGGER = logging.getLogger(__name__)
 # building them over all season calculations.
 
 @lru_cache(maxsize=1)
-def _load_timescale() -> "skyfield.timelib.Timescale":
+def _load_timescale() -> Timescale:
     """Return a cached Skyfield Timescale for UTC calculations."""
     return load.timescale()
 
 
 @lru_cache(maxsize=1)
-def _load_ephemeris() -> "skyfield.jpllib.SpiceKernel":
+def _load_ephemeris() -> SpiceKernel:
     """Return a cached JPL DE430 ephemeris if available."""
     return load("de430.bsp")
 
@@ -52,18 +57,27 @@ def _load_ephemeris() -> "skyfield.jpllib.SpiceKernel":
 def _calculate_astronomical_starts(
     year: int,
 ) -> tuple[datetime, datetime, datetime, datetime]:
-    """Return start datetimes of seasons for the given year using Skyfield."""
+    """Return UTC-aware start datetimes of seasons for the given year using Skyfield.
+
+    Constructs Skyfield Time values from a Timescale instance and returns
+    UTC-aware datetime objects for each season start.
+    """
     ts = _load_timescale()
     eph = _load_ephemeris()
-    # Calculate discrete events for the four seasons within the year
+    # Construct Skyfield Time values from the Timescale for the year range
     t0 = ts.utc(year, 1, 1)
     t1 = ts.utc(year + 1, 1, 1)
     times, events = almanac.find_discrete(t0, t1, almanac.seasons(eph))
-    # Map event code to the UTC datetime; 0=March equinox, 1=June solstice,
+    # Map event code to the UTC-aware datetime; 0=March equinox, 1=June solstice,
     # 2=September equinox, 3=December solstice.
     event_map: dict[int, datetime] = {}
     for event_code, t in zip(events, times):
-        event_map[event_code] = t.utc_datetime().replace(tzinfo=None)
+        # Convert Skyfield Time to UTC-aware datetime
+        utc_dt = t.utc_datetime()
+        # Ensure it's UTC-aware (Skyfield should already provide this, but be explicit)
+        if utc_dt.tzinfo is None:
+            utc_dt = utc_dt.replace(tzinfo=UTC)
+        event_map[event_code] = utc_dt
     return (
         event_map[0],
         event_map[1],
@@ -90,9 +104,21 @@ async def async_setup_entry(
 def get_season(
     current_date: date, hemisphere: str, season_tracking_type: str
 ) -> str | None:
-    """Calculate the current season at the given date and hemisphere."""
+    """Calculate the current season at the given date and hemisphere.
+
+    All datetime comparisons use UTC-aware datetime objects.
+    """
     if hemisphere == EQUATOR:
         return None
+
+    # Ensure current_date is a UTC-aware datetime for comparisons
+    if isinstance(current_date, datetime):
+        if current_date.tzinfo is None:
+            current_date = current_date.replace(tzinfo=UTC)
+    else:
+        # Convert date to UTC-aware datetime at midnight
+        current_date = datetime.combine(current_date, datetime.min.time(), tzinfo=UTC)
+
     if season_tracking_type == TYPE_ASTRONOMICAL:
         try:
             spring_start, summer_start, autumn_start, winter_start = (
@@ -100,20 +126,20 @@ def get_season(
             )
         except Exception as err:
             # If we cannot compute astronomical season start times, fall back
-            # to approximate equinox and solstice dates for the given year.
+            # to approximate UTC-aware equinox and solstice dates for the given year.
             LOGGER.warning(
                 "Falling back to fixed astronomical season start dates: %s", err
             )
-            spring_start = datetime(current_date.year, 3, 20)
-            summer_start = datetime(current_date.year, 6, 21)
-            autumn_start = datetime(current_date.year, 9, 22)
-            winter_start = datetime(current_date.year, 12, 21)
+            spring_start = datetime(current_date.year, 3, 20, tzinfo=UTC)
+            summer_start = datetime(current_date.year, 6, 21, tzinfo=UTC)
+            autumn_start = datetime(current_date.year, 9, 22, tzinfo=UTC)
+            winter_start = datetime(current_date.year, 12, 21, tzinfo=UTC)
     else:
-        # Meteorological seasons begin on the first of the month.
-        spring_start = datetime(2017, 3, 1).replace(year=current_date.year)
-        summer_start = spring_start.replace(month=6)
-        autumn_start = spring_start.replace(month=9)
-        winter_start = spring_start.replace(month=12)
+        # Meteorological seasons begin on the first of the month (UTC-aware).
+        spring_start = datetime(current_date.year, 3, 1, tzinfo=UTC)
+        summer_start = datetime(current_date.year, 6, 1, tzinfo=UTC)
+        autumn_start = datetime(current_date.year, 9, 1, tzinfo=UTC)
+        winter_start = datetime(current_date.year, 12, 1, tzinfo=UTC)
     season = STATE_WINTER
     if spring_start <= current_date < summer_start:
         season = STATE_SPRING
@@ -148,7 +174,5 @@ class SeasonSensorEntity(SensorEntity):
         )
 
     def update(self) -> None:
-        """Update season."""
-        self._attr_native_value = get_season(
-            utcnow().replace(tzinfo=None), self.hemisphere, self.type
-        )
+        """Update season with current UTC time."""
+        self._attr_native_value = get_season(utcnow(), self.hemisphere, self.type)
