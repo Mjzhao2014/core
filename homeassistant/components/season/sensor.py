@@ -64,7 +64,7 @@ def _get_timescale():
 @lru_cache(maxsize=8)
 def _get_ephemeris():
     """Get or create a Skyfield ephemeris object with LRU caching."""
-    return load("de421.bsp")
+    return load("de430.bsp")
 
 
 def _calculate_astronomical_seasons(
