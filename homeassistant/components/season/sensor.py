@@ -55,13 +55,13 @@ async def async_setup_entry(
     async_add_entities([SeasonSensorEntity(entry, hemisphere)], True)
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def _get_timescale():
     """Get or create a Skyfield timescale object with LRU caching."""
     return load.timescale()
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def _get_ephemeris():
     """Get or create a Skyfield ephemeris object with LRU caching."""
     return load("de430.bsp")
