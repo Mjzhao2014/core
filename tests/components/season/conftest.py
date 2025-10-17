@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-iiiimport asyncio
+import asyncio
 from collections.abc import Generator
 from unittest.mock import patch
 
