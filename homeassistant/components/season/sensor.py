@@ -8,7 +8,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from skyfield import almanac
-from skyfield.api import load
+from skyfield.api import Loader, load as skyfield_load
 
 if TYPE_CHECKING:
     from skyfield.jpllib import SpiceKernel
@@ -37,6 +37,8 @@ from .const import (
 
 LOGGER = logging.getLogger(__name__)
 
+load: Loader = skyfield_load
+
 
 # The Skyfield ephemeris and timescale objects are cached, both to avoid
 # repeated network requests to download de430 and to amortize the cost of
@@ -52,6 +54,17 @@ def _load_timescale() -> Timescale:
 def _load_ephemeris() -> SpiceKernel:
     """Return a cached JPL DE430 ephemeris if available."""
     return load("de430.bsp")
+
+
+def _ensure_loader_configured(hass: HomeAssistant) -> None:
+    """Ensure Skyfield downloads are cached inside Home Assistant's config dir."""
+    global load
+    storage_path = hass.config.path("skyfield")
+    if load.directory == storage_path:
+        return
+    load = Loader(storage_path)
+    _load_timescale.cache_clear()
+    _load_ephemeris.cache_clear()
 
 
 def _calculate_astronomical_starts(
@@ -92,6 +105,8 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the platform from config entry."""
+    _ensure_loader_configured(hass)
+
     hemisphere = EQUATOR
     if hass.config.latitude < 0:
         hemisphere = SOUTHERN
