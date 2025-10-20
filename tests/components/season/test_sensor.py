@@ -10,7 +10,7 @@ from homeassistant.components.season.const import (
     TYPE_ASTRONOMICAL,
     TYPE_METEOROLOGICAL,
 )
-from homeassistant.components.season.sensor import (
+from homeassistant.components.season.const import (
     STATE_AUTUMN,
     STATE_SPRING,
     STATE_SUMMER,
